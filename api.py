@@ -5,7 +5,7 @@ import urllib.parse
 from multiprocessing import Process, Value
 
 # Load configurations and constants from setting.py
-from setting import server_ip, git_commit_id, list_api_keyword
+from setting import server_ip, git_commit_id, list_api_keyword, kafka_location, kafka_topic_post
 
 # Import OOP classes
 from src.logger import Logger
@@ -52,7 +52,10 @@ if __name__ == '__main__':
     )
     
     publisher = DataPublisher(
-        local_output_dir="crawling_result"
+        kafka_location=kafka_location,
+        kafka_topic_post=kafka_topic_post,
+        local_output_dir="crawling_result",
+        logger=logger
     )
     
     target_manager = TargetManager(
