@@ -1,0 +1,131 @@
+# Standard Library Imports
+import datetime
+import hashlib
+import json
+import multiprocessing
+import os
+import random
+import re
+import sys
+import time
+import urllib.parse
+from multiprocessing import Process, Queue
+
+# Third-Party Imports
+import moment
+import pytz
+import requests
+import pymongo
+from confluent_kafka import Producer
+from dotenv import load_dotenv
+from flask import Flask, abort, jsonify, request, Response
+from flask_cors import CORS
+from kafka import KafkaProducer
+from pymongo import MongoClient
+from pymongo.errors import ServerSelectionTimeoutError
+from urllib.parse import quote
+
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+
+load_dotenv()
+
+# Default nilai lokal supaya tidak KeyError kalau .env belum lengkap (mode lokal/testing)
+os.environ.setdefault("TYPE", "login")
+os.environ.setdefault("CLIENT_ID", "1")
+os.environ.setdefault("LIMIT", "10")
+os.environ.setdefault("SOURCE", "linkedin")
+os.environ.setdefault("ID_TARGET", "1")
+os.environ.setdefault("PORT", "5000")
+os.environ.setdefault("VM", "local")
+
+banner = r"""
+            This engine developed by:
+
+====================================================
+||                                                ||
+||     _______ _______ ______ _______ _______     ||
+||    |   |   |   _   |      |   _   |    |  |    ||
+||    |       |       |   ---|       |       |    ||
+||    |__|_|__|___|___|______|___|___|__|____|    ||
+||                                                ||
+||                     © 2026                     ||
+====================================================
+
+"""
+
+print(banner)
+time.sleep(3)
+
+
+# Get public ip for metadata
+def get_public_ip():
+	try:
+		response = requests.get('https://api.ipify.org?format=json')
+		response.raise_for_status()
+		ip_info = response.json()
+		return ip_info["ip"]		
+	except Exception as e:
+		print(f"[WARNING] Failed to fetch IP address. Reason: {e}")
+		return None
+
+# API MDM Keyword-Hashtag-Profile
+# OS from environment server (.env)
+API_MDM_BASE_URL = os.getenv("API_MDM_BASE_URL")
+
+# OS from docker-compose environment
+TYPE = os.environ["TYPE"]
+CLIENT_ID = os.environ["CLIENT_ID"]
+LIMIT = os.environ["LIMIT"]
+SOURCE = os.environ["SOURCE"]
+PAGE = os.environ["ID_TARGET"]
+
+# URL API MDM
+list_api_keyword = (
+    f"{API_MDM_BASE_URL}/api/v1/crawler/keyword-hashtag"
+    f"?client_id={CLIENT_ID}"
+    f"&limit={LIMIT}"
+    f"&source={SOURCE}"
+    f"&page={PAGE}"
+    f"&for=client"
+)
+
+
+# ===================================================================================================================================================
+
+
+# Mongo Configuration
+# NOTE: Mode lokal - tidak lagi menggunakan MongoDB.
+# Data akun login sekarang dibaca/ditulis dari file lokal "accounts.json" (lihat api.py).
+
+# Kafka
+kafka_location = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+kafka_topic_post = os.getenv("KAFKA_TOPIC_POST")
+
+# Git Metadata
+def get_git_commit_id():
+	try:
+		import subprocess
+		commit = subprocess.check_output(
+			['git', 'rev-parse', 'HEAD'],
+			stderr=subprocess.DEVNULL
+		).decode('utf-8').strip()
+		if commit:
+			return commit
+	except Exception:
+		pass
+	return os.getenv("GIT_COMMIT_ID") or None
+
+git_commit_id = get_git_commit_id()
+
+# Server Info
+server_ip = get_public_ip()
+
+
+# ===================================================================================================================================================
