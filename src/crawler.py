@@ -12,6 +12,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 class LinkedInCrawler:
     def __init__(self, account_manager, logger, publisher, client_id: int):
@@ -40,7 +42,8 @@ class LinkedInCrawler:
         chrome_options.add_argument('--window-size=1024x800')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        self.driver = webdriver.Chrome(options=chrome_options)
+        # self.driver = webdriver.Chrome(options=chrome_options)
+        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     def close_driver(self):
         if self.driver:
@@ -111,9 +114,144 @@ class LinkedInCrawler:
             print(f"[INFO] Start login with username: {self.current_username}")
             self.driver.get("https://www.linkedin.com/login")
             self.dummy_wait(5)
-            print("[INFO] Insert username and password")
+            
+            # Selectors
+            username_selectors = [
+                "input[autocomplete='username webauthn']",
+                "input[autocomplete='username']",
+                "input[name='session_key']",
+                "input[type='email']",
+                "#username",
+            ]
+            password_selectors = [
+                "input[autocomplete='current-password']",
+                "input[name='session_password']",
+                "input[type='password']",
+                "#password",
+            ]
+
+            def find_first(selectors):
+                for sel in selectors:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                    if elements:
+                        return elements[0]
+                return None
+
+            def fill_field(field, value, label):
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView({block: 'center'});", field
+                )
+                time.sleep(0.2)
+                self.driver.execute_script(
+                    """
+                    const el = arguments[0];
+                    const val = arguments[1];
+                    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                    setter.call(el, val);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    """,
+                    field,
+                    value,
+                )
+                print(f"[INFO] Field {label} filled (JS).")
+
+            print("[INFO] Searching for username field...")
+            username_field = find_first(username_selectors)
+            if username_field is None:
+                # Save screenshot + HTML source for debugging if username field not found
+                os.makedirs(self.debug_dir, exist_ok=True)
+                self.driver.save_screenshot(os.path.join(self.debug_dir, "debug_login_page.png"))
+                with open(os.path.join(self.debug_dir, "debug_login_page.html"), "w", encoding="utf-8") as f:
+                    f.write(self.driver.page_source)
+                print("[WARNING] Username field not found in page. Saved screenshot & HTML.")
+            else:
+                password_field = find_first(password_selectors)
+                if password_field is None:
+                    print("[WARNING] Password field not found.")
+                else:
+                    # Fill fields
+                    fill_field(username_field, self.current_username, "username")
+                    fill_field(password_field, available_account["password"], "password")
+
+                    # Submit form
+                    from selenium.webdriver.common.keys import Keys
+                    try:
+                        password_field.send_keys(Keys.RETURN)
+                        print("[INFO] Enter key sent natively.")
+                    except Exception as e:
+                        print(f"[WARNING] Native Enter key failed ({type(e).__name__}), falling back to JS dispatch...")
+                        self.driver.execute_script(
+                            """
+                            const el = arguments[0];
+                            el.focus();
+                            for (const type of ['keydown', 'keypress', 'keyup']) {
+                                el.dispatchEvent(new KeyboardEvent(type, {
+                                    key: 'Enter',
+                                    code: 'Enter',
+                                    keyCode: 13,
+                                    which: 13,
+                                    bubbles: true,
+                                    cancelable: true,
+                                }));
+                            }
+                            """,
+                            password_field,
+                        )
+                        print("[INFO] Enter key sent via JS dispatch.")
+
+                    # Wait for redirection/challenge
+                    time.sleep(5)
+
+                    # Check for checkpoint/challenge
+                    if "checkpoint/challenge" in self.driver.current_url:
+                        print("\n=== VERIFICATION CHALLENGE (OTP) DETECTED ===")
+                        print("URL:", self.driver.current_url)
+
+                        pin_selectors = [
+                            "#input__email_verification_pin",
+                            "input[name='pin']",
+                            "input.input_verification_pin",
+                        ]
+                        pin_field = find_first(pin_selectors)
+
+                        if pin_field is None:
+                            os.makedirs(self.debug_dir, exist_ok=True)
+                            self.driver.save_screenshot(os.path.join(self.debug_dir, "debug_checkpoint_page.png"))
+                            with open(os.path.join(self.debug_dir, "debug_checkpoint_page.html"), "w", encoding="utf-8") as f:
+                                f.write(self.driver.page_source)
+                            print("[WARNING] Verification PIN field not found. Saved checkpoint debug info.")
+                        else:
+                            otp_code = input("Masukkan kode verifikasi/OTP yang dikirim LinkedIn: ").strip()
+                            fill_field(pin_field, otp_code, "kode OTP")
+                            
+                            try:
+                                pin_field.send_keys(Keys.RETURN)
+                                print("[INFO] Enter key sent natively for OTP.")
+                            except Exception as e:
+                                print(f"[WARNING] Native Enter for OTP failed ({type(e).__name__}), falling back to JS dispatch...")
+                                self.driver.execute_script(
+                                    """
+                                    const el = arguments[0];
+                                    el.focus();
+                                    for (const type of ['keydown', 'keypress', 'keyup']) {
+                                        el.dispatchEvent(new KeyboardEvent(type, {
+                                            key: 'Enter',
+                                            code: 'Enter',
+                                            keyCode: 13,
+                                            which: 13,
+                                            bubbles: true,
+                                            cancelable: true,
+                                        }));
+                                    }
+                                    """,
+                                    pin_field,
+                                )
+                                print("[INFO] Enter key sent via JS dispatch for OTP.")
+                            time.sleep(5)
+
         except Exception as e:
-            print(f"[DEBUG] Error pas isi form: {e}")
+            print(f"[DEBUG] Error pas isi form / OTP: {e}")
 
         # Polling for login success (redirected to feed or global-nav present)
         timeout = 300

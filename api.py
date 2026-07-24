@@ -54,7 +54,6 @@ if __name__ == '__main__':
     publisher = DataPublisher(
         kafka_location=kafka_location,
         kafka_topic_post=kafka_topic_post,
-        local_output_dir="crawling_result",
         logger=logger
     )
     

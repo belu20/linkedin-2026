@@ -1,37 +1,10 @@
 # Standard Library Imports
-import datetime
-import hashlib
-import json
-import multiprocessing
 import os
-import random
-import re
-import sys
 import time
-import urllib.parse
-from multiprocessing import Process, Queue
 
 # Third-Party Imports
-import moment
-import pytz
 import requests
-import pymongo
-from confluent_kafka import Producer
 from dotenv import load_dotenv
-from flask import Flask, abort, jsonify, request, Response
-from flask_cors import CORS
-from kafka import KafkaProducer
-from pymongo import MongoClient
-from pymongo.errors import ServerSelectionTimeoutError
-from urllib.parse import quote
-
-from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 
 
 load_dotenv()

@@ -1,0 +1,23 @@
+services:
+  linkedin-search:
+    image: "linkedin-search"
+    build: .
+    container_name: linkedin-search
+    restart: always
+    init: true
+    shm_size: '2gb'
+    mem_limit: 2g
+    cpus: 2
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      - TYPE=keyword
+      - CLIENT_ID=49590 # PINDAHAN DB
+      - LIMIT=300
+      - SOURCE=linkedin
+      - ID_TARGET=1
+      - VM=VM-CRAWLING-LINKEDIN2026
+      - PORT=1567
+    volumes:
+      - /home/promtail/:/logs
