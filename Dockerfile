@@ -1,4 +1,4 @@
-FROM python:3.8
+FROM python:3.11-slim
 
 # Setup tmp (biar aman di container)
 RUN mkdir -p /tmp && chmod 1777 /tmp
@@ -6,7 +6,7 @@ ENV TMPDIR=/tmp
 
 # Install dependencies dasar
 # (Xvfb & libgtk-3-0 dihapus karena Chrome jalan --headless=new, tidak butuh virtual display)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     curl \
@@ -22,15 +22,14 @@ RUN apt-get update && apt-get install -y \
 # Install Chrome for Testing + matching Chromedriver (VERSI SAMA)
 ENV CHROME_VERSION=147.0.7727.116
 
-RUN wget -O /tmp/chrome.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip \
-    && unzip /tmp/chrome.zip -d /opt/ \
+# Digabung jadi satu layer supaya image lebih ringkas
+RUN wget -q -O /tmp/chrome.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip \
+    && unzip -q /tmp/chrome.zip -d /opt/ \
     && ln -s /opt/chrome-linux64/chrome /usr/bin/google-chrome \
-    && rm /tmp/chrome.zip
-
-RUN wget -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip \
-    && unzip /tmp/chromedriver.zip -d /opt/ \
+    && wget -q -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip \
+    && unzip -q /tmp/chromedriver.zip -d /opt/ \
     && ln -s /opt/chromedriver-linux64/chromedriver /usr/bin/chromedriver \
-    && rm /tmp/chromedriver.zip
+    && rm /tmp/chrome.zip /tmp/chromedriver.zip
 
 # Install Python libs dari requirements.txt
 COPY requirements.txt /requirements.txt
@@ -45,6 +44,14 @@ COPY src/ /src/
 
 # Permission
 RUN chmod +x /run.sh
+
+# Jalankan sebagai non-root user (praktik keamanan lebih baik untuk container long-running)
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /src /run.sh /setting.py /api.py
+USER appuser
+
+# Healthcheck ke endpoint status Flask
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-5000}/status || exit 1
 
 # Run
 CMD ["/run.sh"]

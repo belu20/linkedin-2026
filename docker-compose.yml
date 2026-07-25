@@ -3,17 +3,18 @@ services:
     image: "linkedin-search"
     build: .
     container_name: linkedin-search
-    restart: always
+    restart: on-failure:5
     init: true
-    shm_size: '2gb'
-    mem_limit: 2g
-    cpus: 2
-    network_mode: host
+    shm_size: "1gb"
+    mem_limit: 1.5g
+    cpus: 1.5
+    ports:
+      - "1567:1567"
     env_file:
       - .env
     environment:
       - TYPE=keyword
-      - CLIENT_ID=49590 # PINDAHAN DB
+      - CLIENT_ID=49590 # PINDAHAN DB -- pastikan cocok dengan client_id akun di MongoDB
       - LIMIT=300
       - SOURCE=linkedin
       - ID_TARGET=1
@@ -21,3 +22,14 @@ services:
       - PORT=1567
     volumes:
       - /home/promtail/:/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1567/status"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

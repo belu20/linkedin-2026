@@ -1,10 +1,8 @@
 selenium==4.0.0
-selenium-wire
 requests
 pymongo==4
 moment
 beautifulsoup4
-kafka-python
 confluent_kafka
 flask
 flask_cors

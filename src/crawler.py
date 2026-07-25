@@ -13,7 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+# from webdriver_manager.chrome import ChromeDriverManager
 
 class LinkedInCrawler:
     def __init__(self, account_manager, logger, publisher, client_id: int):
@@ -43,8 +43,8 @@ class LinkedInCrawler:
         chrome_options.add_argument('--window-size=1024x800')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        # self.driver = webdriver.Chrome(options=chrome_options)
-        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        self.driver = webdriver.Chrome(options=chrome_options)
+        # self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     def close_driver(self):
         if self.driver:
