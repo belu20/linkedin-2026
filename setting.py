@@ -17,26 +17,6 @@ os.environ.setdefault("SOURCE", "linkedin")
 os.environ.setdefault("ID_TARGET", "1")
 os.environ.setdefault("PORT", "5000")
 os.environ.setdefault("VM", "local")
-
-banner = r"""
-            This engine developed by:
-
-====================================================
-||                                                ||
-||     _______ _______ ______ _______ _______     ||
-||    |   |   |   _   |      |   _   |    |  |    ||
-||    |       |       |   ---|       |       |    ||
-||    |__|_|__|___|___|______|___|___|__|____|    ||
-||                                                ||
-||                     © 2026                     ||
-====================================================
-
-"""
-
-print(banner)
-time.sleep(3)
-
-
 # Get public ip for metadata
 def get_public_ip():
 	try:
@@ -73,9 +53,7 @@ list_api_keyword = (
 # ===================================================================================================================================================
 
 
-# Mongo Configuration
-# NOTE: Mode lokal - tidak lagi menggunakan MongoDB.
-# Data akun login sekarang dibaca/ditulis dari file lokal "accounts.json" (lihat api.py).
+
 
 # Kafka
 kafka_location = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
