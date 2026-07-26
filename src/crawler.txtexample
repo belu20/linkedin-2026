@@ -13,10 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.keys import Keys
-from webdriver_manager.chrome import ChromeDriverManager
-
-from src.gmail_otp_fetcher import get_linkedin_otp_from_gmail
+# from webdriver_manager.chrome import ChromeDriverManager
 
 class LinkedInCrawler:
     def __init__(self, account_manager, logger, publisher, client_id: int):
@@ -46,8 +43,8 @@ class LinkedInCrawler:
         chrome_options.add_argument('--window-size=1024x800')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        # self.driver = webdriver.Chrome(options=chrome_options)
-        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        self.driver = webdriver.Chrome(options=chrome_options)
+        # self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     def close_driver(self):
         if self.driver:
@@ -226,43 +223,31 @@ class LinkedInCrawler:
                                 f.write(self.driver.page_source)
                             print("[WARNING] Verification PIN field not found. Saved checkpoint debug info.")
                         else:
-                            print("[INFO] Mengambil kode OTP dari Gmail...")
-                            otp_code = get_linkedin_otp_from_gmail(
-                                gmail_user=os.getenv("GMAIL_USER"),
-                                gmail_app_password=os.getenv("GMAIL_APP_PASSWORD"),
-                                max_wait_seconds=90,
-                            )
-
-                            if otp_code is None:
-                                print("[WARNING] OTP tidak ditemukan dari Gmail dalam batas waktu. Skip pengisian OTP.")
-                                os.makedirs(self.debug_dir, exist_ok=True)
-                                self.driver.save_screenshot(os.path.join(self.debug_dir, "debug_otp_timeout.png"))
-                            else:
-                                print(f"[INFO] OTP ditemukan: {otp_code}")
-                                fill_field(pin_field, otp_code, "kode OTP")
-
-                                try:
-                                    pin_field.send_keys(Keys.RETURN)
-                                    print("[INFO] Enter key sent natively for OTP.")
-                                except Exception as e:
-                                    print(f"[WARNING] Native Enter for OTP failed ({type(e).__name__}), falling back to JS dispatch...")
-                                    self.driver.execute_script(
-                                        """
-                                        const el = arguments[0];
-                                        el.focus();
-                                        for (const type of ['keydown', 'keypress', 'keyup']) {
-                                            el.dispatchEvent(new KeyboardEvent(type, {
-                                                key: 'Enter',
-                                                code: 'Enter',
-                                                keyCode: 13,
-                                                which: 13,
-                                                bubbles: true,
-                                                cancelable: true,
-                                            }));
-                                        }
-                                        """,
-                                        pin_field,
-                                    )
+                            otp_code = input("Masukkan kode verifikasi/OTP yang dikirim LinkedIn: ").strip()
+                            fill_field(pin_field, otp_code, "kode OTP")
+                            
+                            try:
+                                pin_field.send_keys(Keys.RETURN)
+                                print("[INFO] Enter key sent natively for OTP.")
+                            except Exception as e:
+                                print(f"[WARNING] Native Enter for OTP failed ({type(e).__name__}), falling back to JS dispatch...")
+                                self.driver.execute_script(
+                                    """
+                                    const el = arguments[0];
+                                    el.focus();
+                                    for (const type of ['keydown', 'keypress', 'keyup']) {
+                                        el.dispatchEvent(new KeyboardEvent(type, {
+                                            key: 'Enter',
+                                            code: 'Enter',
+                                            keyCode: 13,
+                                            which: 13,
+                                            bubbles: true,
+                                            cancelable: true,
+                                        }));
+                                    }
+                                    """,
+                                    pin_field,
+                                )
                                 print("[INFO] Enter key sent via JS dispatch for OTP.")
                             time.sleep(5)
 

@@ -6,7 +6,7 @@ services:
     restart: on-failure:5
     init: true
     shm_size: "1gb"
-    mem_limit: 1.5g
+    mem_limit: 2.3g
     cpus: 1.5
     ports:
       - "1567:1567"
