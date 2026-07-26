@@ -300,10 +300,10 @@ class LinkedInCrawler:
 
         self.driver.get("https://www.linkedin.com/")
         self.dummy_wait(3)
-        print("[DEBUG] ========================= RENDER TEST")
-        page = self.driver.find_element(By.XPATH, "//html").get_attribute("innerText")
-        print(page)
-        print("[DEBUG] ========================= RENDER TEST")
+        # print("[DEBUG] ========================= RENDER TEST")
+        # page = self.driver.find_element(By.XPATH, "//html").get_attribute("innerText")
+        # print(page)
+        # print("[DEBUG] ========================= RENDER TEST")
 
         found = None
         try:
