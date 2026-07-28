@@ -1,17 +1,39 @@
 import datetime
 import json
+import logging
 import os
 import time
 import pytz
+from logging.handlers import RotatingFileHandler
 
 class Logger:
-    def __init__(self, service_name: str, vm_name: str, log_status_value):
+    def __init__(self, service_name: str, vm_name: str, log_status_value,
+                 max_bytes: int = 20 * 1024 * 1024, backup_count: int = 3):
         self.service_name = service_name
         self.vm_name = vm_name
         self.log_status_value = log_status_value
         self.log_dir = "logs"
         os.makedirs(self.log_dir, exist_ok=True)
-        
+
+        # ---- Rotating file logger ----
+        # Sebelumnya file log dibuka dengan open(...,"a") tanpa batas ukuran,
+        # sehingga bisa bertumbuh tanpa henti dan menambah Block I/O container.
+        # RotatingFileHandler otomatis memutar file setelah mencapai max_bytes,
+        # dan hanya menyimpan backup_count file lama.
+        log_file_path = os.path.join(self.log_dir, f"{self.vm_name}.log")
+        self._file_logger = logging.getLogger(f"crawler_log_{self.vm_name}")
+        self._file_logger.setLevel(logging.INFO)
+        self._file_logger.propagate = False
+        if not self._file_logger.handlers:
+            handler = RotatingFileHandler(
+                log_file_path,
+                maxBytes=max_bytes,
+                backupCount=backup_count,
+                encoding="utf-8",
+            )
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            self._file_logger.addHandler(handler)
+
         self._logic_list = {
             0000: {"code": "Crawling Summary", "level": "INFO"},
             4401: {"code": "No Ready Cookie", "level": "Warning"},
@@ -54,6 +76,4 @@ class Logger:
             "data": data
         }
         
-        log_file_path = os.path.join(self.log_dir, f"{self.vm_name}.log")
-        with open(log_file_path, "a") as f:
-            f.write(json.dumps(hasil) + "\n")
+        self._file_logger.info(json.dumps(hasil))
