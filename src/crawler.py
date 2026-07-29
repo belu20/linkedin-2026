@@ -47,32 +47,8 @@ class LinkedInCrawler:
         chrome_options.add_argument('--disable-features=BackForwardCache')
         chrome_options.add_argument('--renderer-process-limit=4')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-
-        # ---- I/O reduction: pindahkan cache ke tmpfs (/dev/shm) & batasi ukurannya ----
-        # Tanpa ini, Chrome menulis semua resource (HTML, JS, CSS, gambar) ke disk
-        # profil default setiap kali membuka halaman search/post, yang lama-lama
-        # menumpuk jadi Block I/O sangat tinggi di container.
-        chrome_options.add_argument('--disk-cache-dir=/dev/shm/chrome-cache')
-        chrome_options.add_argument('--disk-cache-size=1')
-        chrome_options.add_argument('--media-cache-size=1')
-        chrome_options.add_argument('--aggressive-cache-discard')
-        chrome_options.add_argument('--disable-application-cache')
-        chrome_options.add_argument('--disable-background-networking')
-        chrome_options.add_argument('--disable-background-timer-throttling')
-        chrome_options.add_argument('--disable-backgrounding-occluded-windows')
-        chrome_options.add_argument('--disable-component-update')
-        chrome_options.add_argument('--disable-sync')
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument('--disable-default-apps')
-        chrome_options.add_argument('--disable-translate')
-        chrome_options.add_argument('--metrics-recording-only')
-        chrome_options.add_argument('--no-first-run')
-        chrome_options.add_argument('--mute-audio')
-        # Catatan: --blink-settings=imagesEnabled=false SENGAJA TIDAK dipakai.
-        # Meski hemat I/O, mematikan image loading membuat pola network request
-        # browser berbeda dari user asli (yang selalu load gambar profil/post),
-        # sehingga berpotensi jadi sinyal deteksi bot bagi LinkedIn. Cache
-        # reduction di atas sudah cukup menekan I/O tanpa risiko ini.
+        chrome_options.add_argument('--disable-features=BackForwardCache')
+        chrome_options.add_argument('--renderer-process-limit=4')
 
         self.driver = webdriver.Chrome(service=Service(executable_path="/usr/bin/chromedriver"), options=chrome_options)
 
@@ -87,6 +63,50 @@ class LinkedInCrawler:
             except Exception as e:
                 print(f"[WARNING] Error closing driver: {e}")
             self.driver = None
+
+    def restart_driver(self):
+        """
+        Restart driver setelah tab crash. Tidak memaksa relogin —
+        cukup buka kembali session, cek status login dulu.
+        Kalau cookie/session masih valid, relogin dihindari
+        supaya tidak menambah frekuensi login yang bisa dicurigai.
+        """
+        print("[WARNING] Restarting driver after crash...")
+        try:
+            self.close_driver()
+        except Exception as e:
+            print(f"[WARNING] Error while closing crashed driver: {e}")
+
+        # Jeda sebelum buka driver baru, biar tidak terlihat seperti retry instan
+        wait_before_restart = random.randint(15, 30)
+        print(f"[INFO] Waiting {wait_before_restart}s before reopening driver...")
+        time.sleep(wait_before_restart)
+
+        try:
+            self.init_driver()
+        except Exception as e:
+            print(f"[ERROR] Failed to re-init driver: {e}")
+            return False
+
+        try:
+            self.driver.get("https://www.linkedin.com/feed/")
+            self.dummy_wait(5)
+            found = None
+            try:
+                found = self.driver.find_element(By.CLASS_NAME, 'nav__button-secondary').text
+            except Exception:
+                pass
+
+            if found is None:
+                print("[INFO] Session masih valid setelah restart driver, tidak perlu login ulang.")
+                return True
+            else:
+                print("[INFO] Session tidak valid, melakukan login ulang...")
+                status = self.login()
+                return status == 1
+        except Exception as e:
+            print(f"[ERROR] Gagal cek session setelah restart driver: {e}")
+            return False
 
     def dummy_wait(self, wait_time: int):
         print(f"[INFO] Waiting for {wait_time} second...")
@@ -199,7 +219,6 @@ class LinkedInCrawler:
                 with open(os.path.join(self.debug_dir, "debug_login_page.html"), "w", encoding="utf-8") as f:
                     f.write(self.driver.page_source)
                 print("[WARNING] Username field not found in page. Saved screenshot & HTML.")
-                self._prune_debug_dir()
             else:
                 password_field = find_first(password_selectors)
                 if password_field is None:
@@ -256,7 +275,6 @@ class LinkedInCrawler:
                             with open(os.path.join(self.debug_dir, "debug_checkpoint_page.html"), "w", encoding="utf-8") as f:
                                 f.write(self.driver.page_source)
                             print("[WARNING] Verification PIN field not found. Saved checkpoint debug info.")
-                            self._prune_debug_dir()
                         else:
                             print("[INFO] Mengambil kode OTP dari Gmail...")
                             otp_code = get_linkedin_otp_from_gmail(
@@ -269,7 +287,6 @@ class LinkedInCrawler:
                                 print("[WARNING] OTP tidak ditemukan dari Gmail dalam batas waktu. Skip pengisian OTP.")
                                 os.makedirs(self.debug_dir, exist_ok=True)
                                 self.driver.save_screenshot(os.path.join(self.debug_dir, "debug_otp_timeout.png"))
-                                self._prune_debug_dir()
                             else:
                                 print(f"[INFO] OTP ditemukan: {otp_code}")
                                 fill_field(pin_field, otp_code, "kode OTP")
@@ -453,31 +470,11 @@ class LinkedInCrawler:
 
         return added
 
-    def save_debug_screenshot(self, name: str, max_files: int = 20):
+    def save_debug_screenshot(self, name: str):
         os.makedirs(self.debug_dir, exist_ok=True)
         path = os.path.join(self.debug_dir, name)
         self.driver.save_screenshot(path)
         print(f"[DEBUG] Saved screenshot: {path}")
-        self._prune_debug_dir(max_files=max_files)
-
-    def _prune_debug_dir(self, max_files: int = 20):
-        """Batasi jumlah file di debug_dir agar tidak menumpuk terus (mencegah Block I/O naik)."""
-        try:
-            files = [
-                os.path.join(self.debug_dir, f)
-                for f in os.listdir(self.debug_dir)
-            ]
-            files = [f for f in files if os.path.isfile(f)]
-            if len(files) <= max_files:
-                return
-            files.sort(key=os.path.getmtime)
-            for f in files[: len(files) - max_files]:
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"[WARNING] Gagal membersihkan debug_dir: {e}")
 
     def scroll_search_results(self) -> bool:
         moved = False
@@ -509,7 +506,15 @@ class LinkedInCrawler:
         return moved
 
     def crawling(self, keyword: str, scroll: bool, server_ip: str, git_commit_id: str):
-        self.check_login_status()
+        try:
+            self.check_login_status()
+        except Exception as e:
+            print(f"[ERROR] check_login_status crashed: {e}")
+            recovered = self.restart_driver()
+            if not recovered:
+                print(f"[WARNING] Gagal recover driver, skip keyword: {urllib.parse.unquote(keyword)}")
+                return 0
+
         post_urls = []
         max_pagination = 10
         page_count = 0

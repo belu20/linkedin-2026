@@ -119,12 +119,18 @@ if __name__ == '__main__':
                 print(f"[INFO] Start Crawling: {urllib.parse.unquote(keyword)}")
                 print("=" * 60)
                 
-                crawler.crawling(
-                    keyword=keyword,
-                    scroll=scroll,
-                    server_ip=server_ip,
-                    git_commit_id=git_commit_id
-                )
+                try:
+                    crawler.crawling(
+                        keyword=keyword,
+                        scroll=scroll,
+                        server_ip=server_ip,
+                        git_commit_id=git_commit_id
+                    )
+                except Exception as e:
+                    print(f"[ERROR] Crawling gagal untuk keyword '{urllib.parse.unquote(keyword)}': {e}")
+                    print("[INFO] Attempting to recover driver session...")
+                    crawler.restart_driver()
+                    # Lanjut ke keyword berikutnya, tidak mengulang keyword yang sama
                 
                 random_sleep = random.randint(80, 100)
                 print(f"[INFO] Waiting for {random_sleep} seconds before starting the next target.")
