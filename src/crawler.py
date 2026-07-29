@@ -32,6 +32,18 @@ class LinkedInCrawler:
 
     def init_driver(self):
         chrome_options = webdriver.ChromeOptions()
+
+        # Persist Chrome profile (cookies, local storage, session) per client_id
+        # so restarting the driver to free memory does NOT force a re-login.
+        # IMPORTANT: this directory must map 1:1 to a single account (client_id),
+        # never shared between different accounts/client_ids.
+        profile_dir = os.path.join(
+            os.environ.get("CHROME_PROFILE_ROOT", "/app/chrome_profiles"),
+            f"client_{self.client_id}"
+        )
+        os.makedirs(profile_dir, exist_ok=True)
+        chrome_options.add_argument(f'--user-data-dir={profile_dir}')
+
         chrome_options.add_argument('--headless=new')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-gpu')
@@ -66,47 +78,17 @@ class LinkedInCrawler:
 
     def restart_driver(self):
         """
-        Restart driver setelah tab crash. Tidak memaksa relogin —
-        cukup buka kembali session, cek status login dulu.
-        Kalau cookie/session masih valid, relogin dihindari
-        supaya tidak menambah frekuensi login yang bisa dicurigai.
+        Restart Chrome untuk melepas memory yang menumpuk selama crawling
+        panjang. Session tidak hilang karena user-data-dir persist di disk,
+        jadi cukup restore_session() tanpa perlu login form ulang.
         """
-        print("[WARNING] Restarting driver after crash...")
-        try:
-            self.close_driver()
-        except Exception as e:
-            print(f"[WARNING] Error while closing crashed driver: {e}")
+        print("[INFO] Restarting Chrome driver to free up memory...")
+        self.close_driver()
+        self.init_driver()
 
-        # Jeda sebelum buka driver baru, biar tidak terlihat seperti retry instan
-        wait_before_restart = random.randint(15, 30)
-        print(f"[INFO] Waiting {wait_before_restart}s before reopening driver...")
-        time.sleep(wait_before_restart)
-
-        try:
-            self.init_driver()
-        except Exception as e:
-            print(f"[ERROR] Failed to re-init driver: {e}")
-            return False
-
-        try:
-            self.driver.get("https://www.linkedin.com/feed/")
-            self.dummy_wait(5)
-            found = None
-            try:
-                found = self.driver.find_element(By.CLASS_NAME, 'nav__button-secondary').text
-            except Exception:
-                pass
-
-            if found is None:
-                print("[INFO] Session masih valid setelah restart driver, tidak perlu login ulang.")
-                return True
-            else:
-                print("[INFO] Session tidak valid, melakukan login ulang...")
-                status = self.login()
-                return status == 1
-        except Exception as e:
-            print(f"[ERROR] Gagal cek session setelah restart driver: {e}")
-            return False
+        if not self.restore_session():
+            print("[WARNING] Session not restored after driver restart, re-login diperlukan.")
+            self.login()
 
     def dummy_wait(self, wait_time: int):
         print(f"[INFO] Waiting for {wait_time} second...")
@@ -123,6 +105,33 @@ class LinkedInCrawler:
             print("[INFO] Logout failed", e)
             pass
         return str(self.driver.page_source)
+
+    def restore_session(self) -> bool:
+        """
+        Cek apakah profile Chrome yang sudah persist (user-data-dir)
+        masih punya session LinkedIn yang valid, tanpa perlu isi form login.
+        Return True kalau session masih valid, False kalau perlu login penuh.
+        """
+        try:
+            self.driver.get("https://www.linkedin.com/feed")
+            self.dummy_wait(5)
+
+            if "linkedin.com/feed" in self.driver.current_url:
+                print("[INFO] Session restored from existing Chrome profile.")
+                return True
+
+            try:
+                self.driver.find_element(By.CLASS_NAME, 'global-nav')
+                print("[INFO] Session restored from existing Chrome profile.")
+                return True
+            except Exception:
+                pass
+
+            print("[INFO] No valid session found in Chrome profile, full login required.")
+            return False
+        except Exception as e:
+            print(f"[WARNING] Failed while checking restored session: {e}")
+            return False
 
     def login(self) -> int:
         available_account = None
@@ -163,6 +172,13 @@ class LinkedInCrawler:
         #    if acc.get("username") == self.current_username:
         #        acc["in_use"] = True
         #self.account_manager.save_accounts(accounts)
+
+        # Coba pakai session yang sudah persist di Chrome profile (user-data-dir)
+        # dulu sebelum isi form login manual. Ini menghindari re-login/OTP
+        # setiap kali driver di-restart untuk menekan memory.
+        if self.restore_session():
+            print("[INFO] Finish login (restored from profile, no form-fill needed)")
+            return 1
 
         try:
             print(f"[INFO] Start login with username: {self.current_username}")
@@ -506,15 +522,7 @@ class LinkedInCrawler:
         return moved
 
     def crawling(self, keyword: str, scroll: bool, server_ip: str, git_commit_id: str):
-        try:
-            self.check_login_status()
-        except Exception as e:
-            print(f"[ERROR] check_login_status crashed: {e}")
-            recovered = self.restart_driver()
-            if not recovered:
-                print(f"[WARNING] Gagal recover driver, skip keyword: {urllib.parse.unquote(keyword)}")
-                return 0
-
+        self.check_login_status()
         post_urls = []
         max_pagination = 10
         page_count = 0
