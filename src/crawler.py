@@ -76,14 +76,76 @@ class LinkedInCrawler:
                 print(f"[WARNING] Error closing driver: {e}")
             self.driver = None
 
-    def restart_driver(self):
+    def cleanup_chrome_profile_cache(self):
+        """
+        Housekeeping berkala: hapus folder cache Chrome yang membengkak,
+        TANPA menghapus data session (Cookies, Local Storage, Session Storage,
+        Preferences, dll). Harus dipanggil saat driver sedang tertutup
+        (setelah close_driver(), sebelum init_driver()) supaya tidak ada
+        file yang sedang di-lock oleh proses Chrome yang masih jalan.
+        """
+        import shutil
+
+        profile_dir = os.path.join(
+            os.environ.get("CHROME_PROFILE_ROOT", "/app/chrome_profiles"),
+            f"client_{self.client_id}"
+        )
+        default_dir = os.path.join(profile_dir, "Default")
+
+        # Folder-folder ini aman dihapus karena cuma cache/history,
+        # BUKAN tempat session/login disimpan.
+        cache_subfolders = [
+            "Cache",
+            "Code Cache",
+            "GPUCache",
+            "Service Worker",
+            "DawnCache",
+            "GrShaderCache",
+            "ShaderCache",
+        ]
+
+        if not os.path.isdir(default_dir):
+            print(f"[INFO] Profile dir belum ada, skip cleanup: {default_dir}")
+            return
+
+        total_cleaned = 0
+        for folder in cache_subfolders:
+            target_path = os.path.join(default_dir, folder)
+            if os.path.exists(target_path):
+                try:
+                    size_mb = 0
+                    for root, _, files in os.walk(target_path):
+                        for f in files:
+                            fp = os.path.join(root, f)
+                            try:
+                                size_mb += os.path.getsize(fp)
+                            except OSError:
+                                pass
+                    size_mb = round(size_mb / (1024 * 1024), 2)
+
+                    shutil.rmtree(target_path, ignore_errors=True)
+                    total_cleaned += size_mb
+                    print(f"[INFO] Cleaned Chrome cache folder '{folder}' (~{size_mb} MB)")
+                except Exception as e:
+                    print(f"[WARNING] Failed to clean '{folder}': {e}")
+
+        print(f"[INFO] Chrome profile cache cleanup finished, total freed ~{round(total_cleaned, 2)} MB")
+
+    def restart_driver(self, cleanup_cache: bool = True):
         """
         Restart Chrome untuk melepas memory yang menumpuk selama crawling
         panjang. Session tidak hilang karena user-data-dir persist di disk,
         jadi cukup restore_session() tanpa perlu login form ulang.
+
+        cleanup_cache: kalau True, jalankan housekeeping hapus folder cache
+        (aman untuk session) sebelum driver dibuka lagi.
         """
         print("[INFO] Restarting Chrome driver to free up memory...")
         self.close_driver()
+
+        if cleanup_cache:
+            self.cleanup_chrome_profile_cache()
+
         self.init_driver()
 
         if not self.restore_session():

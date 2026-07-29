@@ -9,24 +9,24 @@ services:
     mem_limit: 2.3g
     cpus: 1.5
     ports:
-      - "1563:1563"
+      - "1567:1567"
     env_file:
       - .env
     environment:
       - TYPE=keyword
-      - CLIENT_ID=49590 # PINDAHAN DB -- pastikan cocok dengan client_id akun di MongoDB
+      - CLIENT_ID=49716 # PINDAHAN DB -- pastikan cocok dengan client_id akun di MongoDB
       - LIMIT=300
       - SOURCE=linkedin
       - ID_TARGET=1
-      - VM=VM-CRAWLING-IMF
-      - PORT=1563
+      - VM=VM-CRAWLING-ANTAM
+      - PORT=1567
       - CHROME_PROFILE_ROOT=/app/chrome_profiles
-      - RESTART_DRIVER_EVERY_N_KEYWORDS=7
+      - RESTART_DRIVER_EVERY_N_KEYWORDS=15
     volumes:
       - /home/promtail/:/logs
-      - /data/chrome_profiles/client_49590:/app/chrome_profiles/client_49590
+      - /data/chrome_profiles/client_49716:/app/chrome_profiles/client_49716
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1563/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:1567/status"]
       interval: 30s
       timeout: 5s
       start_period: 30s
